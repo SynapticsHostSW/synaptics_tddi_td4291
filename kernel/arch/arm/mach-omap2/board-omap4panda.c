@@ -946,21 +946,17 @@ static void omap4_panda_dsi_init(void)
 	reg |= 0x1f << OMAP4_DSI1_PIPD_SHIFT;
 	omap4_ctrl_pad_writel(reg, OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_DSIPHY);
 
-	omap_mux_init_signal("gpmc_ncs4.gpio_101", OMAP_PIN_OUTPUT);
-	status = gpio_request_one(dsi1_panel.debug_mode_gpio, GPIOF_DIR_OUT,
+	omap_mux_init_signal("gpmc_ncs4.gpio_101", OMAP_PIN_INPUT_PULLUP);
+	status = gpio_request_one(dsi1_panel.debug_mode_gpio, GPIOF_DIR_IN,
 		"td4291_debug_mode_gpio");
 	if (status)
 		pr_err("%s: Could not get debug mode gpio", __func__);
-	else
-		gpio_set_value(dsi1_panel.debug_mode_gpio, 1);
 
-	omap_mux_init_signal("gpmc_ncs5.gpio_102", OMAP_PIN_OUTPUT);
-	status = gpio_request_one(dsi1_panel.reset_gpio, GPIOF_DIR_OUT,
+	omap_mux_init_signal("gpmc_ncs5.gpio_102", OMAP_PIN_INPUT_PULLUP);
+	status = gpio_request_one(dsi1_panel.reset_gpio, GPIOF_DIR_IN,
 		"td4291_reset_gpio");
 	if (status)
 		pr_err("%s: Could not get reset gpio\n", __func__);
-	else
-		gpio_set_value(dsi1_panel.reset_gpio, 1);
 /*
 	omap_mux_init_signal("uart4_rx.gpio_155", OMAP_PIN_OUTPUT);
 	status = gpio_request_one(dsi1_panel.vid_if_sel0_gpio, GPIOF_DIR_OUT,
