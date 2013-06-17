@@ -42,6 +42,8 @@
 
 #define BUFFER_LENGTH 10
 
+#define RESET_DETECTION_INTERVAL_MS 10
+
 #define DELAY_TIME_MS 20
 #define SLEEP_OUT_DELAY_TIME_MS 600
 #define DISPLAY_ON_DELAY_TIME_MS 200
@@ -92,6 +94,14 @@ struct td_4291_register_setting {
 	unsigned char address;
 	unsigned char value;
 };
+
+struct synaptics_rmi4_reset_detection {
+	struct delayed_work work;
+	struct workqueue_struct *workqueue;
+	struct td4291_data *ad;
+};
+
+static struct synaptics_rmi4_reset_detection reset_detection;
 
 static struct omap_video_timings td4291_timings = {
 	.x_res = 720,
@@ -271,6 +281,7 @@ static ssize_t td4291_store_reset(struct device *dev,
 {
 	int retval;
 	unsigned long input;
+	unsigned char num_of_regs;
 	struct omap_dss_device *dssdev = to_dss_device(dev);
 	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
 
@@ -296,6 +307,9 @@ static ssize_t td4291_store_reset(struct device *dev,
 	td4291_dcs_write_sequence(dssdev, display_on,
 			ARRAY_SIZE(display_on));
 	msleep(td4291_panel_config.sleep.display_on);
+
+	num_of_regs = ARRAY_SIZE(auo_reg_settings);
+	td4291_config(dssdev, auo_reg_settings, num_of_regs);
 
 	if (ad->enabled)
 		dsi_video_mode_enable(dssdev, MIPI_DSI_PACKED_PIXEL_STREAM_24);
@@ -975,6 +989,8 @@ static int td4291_hw_reset(struct omap_dss_device *dssdev)
 {
 	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
 
+	return 0;
+
 	gpio_set_value(ad->pdata->reset_gpio, 1);
 	msleep(td4291_panel_config.reset_sequence.high);
 	gpio_set_value(ad->pdata->reset_gpio, 0);
@@ -1213,9 +1229,55 @@ static void td4291_config(struct omap_dss_device *dssdev,
 	return;
 }
 
+static void synaptics_rmi4_reset_det_work(struct work_struct *work)
+{
+	unsigned char num_of_regs;
+	unsigned char current_state;
+	static unsigned char previous_state = 1;
+	struct td4291_data *ad = reset_detection.ad;
+	struct omap_dss_device *dssdev = ad->dssdev;
+
+	current_state = gpio_get_value(ad->pdata->reset_gpio);
+	if ((previous_state == 1) && (current_state == 0)) {
+		if (ad->enabled) {
+			mutex_lock(&ad->lock);
+			dsi_bus_lock(dssdev);
+			dsi_video_mode_disable(dssdev);
+			dsi_bus_unlock(dssdev);
+			mutex_unlock(&ad->lock);
+		}
+	} else if ((previous_state == 0) && (current_state == 1)) {
+		mutex_lock(&ad->lock);
+		dsi_bus_lock(dssdev);
+		msleep(td4291_panel_config.sleep.hw_reset);
+		td4291_dcs_write_sequence(dssdev, sleep_out,
+				ARRAY_SIZE(sleep_out));
+		msleep(td4291_panel_config.sleep.sleep_out);
+		td4291_dcs_write_sequence(dssdev, display_on,
+				ARRAY_SIZE(display_on));
+		msleep(td4291_panel_config.sleep.display_on);
+		num_of_regs = ARRAY_SIZE(auo_reg_settings);
+		td4291_config(dssdev, auo_reg_settings, num_of_regs);
+		if (ad->enabled)
+			dsi_video_mode_enable(dssdev,
+					MIPI_DSI_PACKED_PIXEL_STREAM_24);
+		dsi_bus_unlock(dssdev);
+		mutex_unlock(&ad->lock);
+	}
+
+	previous_state = current_state;
+
+	queue_delayed_work(reset_detection.workqueue,
+			&reset_detection.work,
+			msecs_to_jiffies(RESET_DETECTION_INTERVAL_MS));
+
+	return;
+}
+
 static int td4291_power_on(struct omap_dss_device *dssdev)
 {
 	int retval = 0;
+	unsigned char num_of_regs;
 	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
 
 	if (!ad->enabled) {
@@ -1247,7 +1309,8 @@ static int td4291_power_on(struct omap_dss_device *dssdev)
 				ARRAY_SIZE(display_on));
 		msleep(td4291_panel_config.sleep.display_on);
 
-//		td4291_config(dssdev);
+		num_of_regs = ARRAY_SIZE(auo_reg_settings);
+		td4291_config(dssdev, auo_reg_settings, num_of_regs);
 
 		retval = dsi_vc_set_max_rx_packet_size(dssdev,
 				ad->config_channel, 0xff);
@@ -1471,6 +1534,13 @@ static int td4291_probe(struct omap_dss_device *dssdev)
 	retval = gpio_export(ad->pdata->reset_gpio, false);
 	if (retval < 0)
 		dev_err(&dssdev->dev, "Failed to export attention gpio\n");
+
+	reset_detection.workqueue = create_singlethread_workqueue("reset_detection");
+	INIT_DELAYED_WORK(&reset_detection.work, synaptics_rmi4_reset_det_work);
+	reset_detection.ad = ad;
+	queue_delayed_work(reset_detection.workqueue,
+			&reset_detection.work,
+			msecs_to_jiffies(RESET_DETECTION_INTERVAL_MS));
 
 	return retval;
 
