@@ -38,8 +38,6 @@
 
 #define TD4291_VERSION "1.13"
 
-#define USE_GENERIC_ACCESS true
-
 #define BUFFER_LENGTH 10
 
 #define DELAY_TIME_MS 20
@@ -66,7 +64,6 @@ struct td4291_data {
 	bool enabled;
 	bool ready_for_access;
 	bool read_result;
-	bool use_generic_access;
 };
 
 struct panel_config {
@@ -86,11 +83,6 @@ struct panel_config {
 struct td4291_reg {
 	unsigned char data[10];
 	int len;
-};
-
-struct td_4291_register_setting {
-	unsigned char address;
-	unsigned char value;
 };
 
 static struct omap_video_timings td4291_timings = {
@@ -126,98 +118,6 @@ static struct td4291_reg display_on[] = {
 	{{ MIPI_DCS_SET_DISPLAY_ON, }, 1},
 };
 
-static struct td_4291_register_setting auo_reg_settings[] = {
-	{
-		.address = 0xb0, /* DSI_CFG_7_0 */
-		.value = 0x00,
-	},
-	{
-		.address = 0xb3, /* DSI_CFG_31_24 */
-		.value = 0xf0,
-	},
-	{
-		.address = 0x45, /* TCH_SL_LSB */
-		.value = 0x11,
-	},
-	{
-		.address = 0x55, /* BLANK_REG */
-		.value = 0x00,
-	},
-};
-
-static struct td_4291_register_setting auo_new_reg_settings[] = {
-	{
-		.address = 0xb0, /* DSI_CFG_7_0 */
-		.value = 0x00,
-	},
-	{
-		.address = 0xb3, /* DSI_CFG_31_24 */
-		.value = 0x00,
-	},
-	{
-		.address = 0x2d, /* VID_IN_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0x40, /* OSC_PER_LINE_LSB */
-		.value = 0xd7,
-	},
-	{
-		.address = 0xac, /* DISP_OUT_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0xe0, /* TCH_LPB_LSB */
-		.value = 0x0d,
-	},
-	{
-		.address = 0x55, /* BLANK_REG */
-		.value = 0x00,
-	},
-};
-
-static struct td_4291_register_setting yxt_reg_settings[] = {
-	{
-		.address = 0xb3, /* DSI_CFG_31_24 */
-		.value = 0x70,
-	},
-	{
-		.address = 0x45, /* TCH_SL_LSB */
-		.value = 0x13,
-	},
-};
-
-static struct td_4291_register_setting yxt_new_reg_settings[] = {
-	{
-		.address = 0xb0, /* DSI_CFG_7_0 */
-		.value = 0x00,
-	},
-	{
-		.address = 0xb3, /* DSI_CFG_31_24 */
-		.value = 0x00,
-	},
-	{
-		.address = 0x2d, /* VID_IN_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0x40, /* OSC_PER_LINE_LSB */
-		.value = 0xcc,
-	},
-	{
-		.address = 0xac, /* DISP_OUT_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0xe0, /* TCH_LPB_LSB */
-		.value = 0x0d,
-	},
-	{
-		.address = 0x55, /* BLANK_REG */
-		.value = 0x00,
-	},
-};
-
 void synaptics_rmi4_touch_wake(void);
 void synaptics_rmi4_touch_sleep(void);
 
@@ -228,10 +128,6 @@ static int td4291_dcs_write(struct omap_dss_device *dssdev, unsigned char *buf,
 
 static int td4291_dcs_write_sequence(struct omap_dss_device *dssdev,
 		struct td4291_reg *seq, int len);
-
-static void td4291_config(struct omap_dss_device *dssdev,
-		struct td_4291_register_setting *reg_settings,
-		unsigned char num_of_regs);
 
 static int td4291_hw_reset(struct omap_dss_device *dssdev);
 
@@ -487,233 +383,6 @@ static ssize_t td4291_store_read(struct device *dev,
 	return retval;
 }
 
-static ssize_t td4291_store_write_reg(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	int retval;
-	unsigned long input;
-	unsigned char cmd;
-	struct omap_dss_device *dssdev = to_dss_device(dev);
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	retval = strict_strtoul(buf, 16, &input);
-	if (retval)
-		return retval;
-
-	if (!ad->ready_for_access) {
-		dev_err(&dssdev->dev, "Not ready to do read/write yet\n");
-		return -ENODEV;
-	}
-
-	mutex_lock(&ad->lock);
-	dsi_bus_lock(dssdev);
-
-	if (ad->enabled) {
-		dsi_video_mode_disable(dssdev);
-		msleep(ad->delay_time);
-	}
-
-	cmd = 0xde;
-	retval = dsi_vc_dcs_write_nosync(dssdev, ad->config_channel, &cmd, 1);
-	if (retval < 0) {
-		dev_err(&dssdev->dev, "Failed to enter register access mode\n");
-		goto exit;
-	}
-
-	msleep(ad->delay_time);
-
-	ad->buffer[0] = (unsigned char)input;
-	ad->length++;
-
-	if (ad->use_generic_access)
-		retval = td4291_dcs_write(dssdev, ad->buffer, ad->length, false,
-				true);
-	else
-		retval = td4291_dcs_write(dssdev, ad->buffer, ad->length, false,
-				false);
-	if (retval < 0) {
-		dev_err(&dssdev->dev, "Failed to write (register 0x%02x)\n",
-				(unsigned char)input);
-		goto exit;
-	}
-
-	msleep(ad->delay_time);
-
-	cmd = 0xdf;
-	retval = dsi_vc_dcs_write_nosync(dssdev, ad->config_channel, &cmd, 1);
-	if (retval < 0) {
-		dev_err(&dssdev->dev, "Failed to exit register access mode\n");
-		goto exit;
-	}
-
-	retval = count;
-
-exit:
-	if (ad->enabled) {
-		msleep(ad->delay_time);
-		dsi_video_mode_enable(dssdev, MIPI_DSI_PACKED_PIXEL_STREAM_24);
-	}
-
-	dsi_bus_unlock(dssdev);
-	mutex_unlock(&ad->lock);
-
-	ad->length = 0;
-	ad->index = 0;
-
-	return retval;
-}
-
-static ssize_t td4291_show_read_reg(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct omap_dss_device *dssdev = to_dss_device(dev);
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	if (!ad->read_result)
-		return -EINVAL;
-
-	memcpy(buf, ad->output, ad->output_length * 2);
-	buf[ad->output_length * 2] = '\n';
-	buf[ad->output_length * 2 + 1] = '\0';
-
-	return (ad->output_length * 2 + 1);
-}
-
-static ssize_t td4291_store_read_reg(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	int retval;
-	unsigned char ii;
-	unsigned long input;
-	unsigned char cmd;
-	struct omap_dss_device *dssdev = to_dss_device(dev);
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	retval = strict_strtoul(buf, 16, &input);
-	if (retval)
-		return retval;
-
-	if (!ad->ready_for_access) {
-		dev_err(&dssdev->dev, "Not ready to do read/write yet\n");
-		return -ENODEV;
-	}
-
-	if (ad->length == 0)
-		ad->length = 1;
-
-	mutex_lock(&ad->lock);
-	dsi_bus_lock(dssdev);
-
-	if (ad->enabled) {
-		dsi_video_mode_disable(dssdev);
-		msleep(ad->delay_time);
-	}
-
-	cmd = 0xde;
-	retval = dsi_vc_dcs_write_nosync(dssdev, ad->config_channel, &cmd, 1);
-	if (retval < 0) {
-		ad->read_result = false;
-		dev_err(&dssdev->dev, "Failed to enter register access mode\n");
-		goto exit;
-	} else {
-		ad->read_result = true;
-	}
-
-	msleep(ad->delay_time);
-
-	if (ad->use_generic_access)
-		retval = dsi_vc_dcs_generic_read(ad->dssdev, ad->config_channel,
-				input, ad->buffer, ad->length);
-	else
-		retval = dsi_vc_dcs_read(ad->dssdev, ad->config_channel,
-				input, ad->buffer, ad->length);
-
-	if (retval < 0) {
-		dev_err(&dssdev->dev, "Failed to read (register 0x%02x)\n",
-				(unsigned char)input);
-		goto exit;
-	}
-
-	msleep(ad->delay_time);
-
-	cmd = 0xdf;
-	retval = dsi_vc_dcs_write_nosync(dssdev, ad->config_channel, &cmd, 1);
-	if (retval < 0) {
-		dev_err(&dssdev->dev, "Failed to exit register access mode\n");
-		goto exit;
-	}
-
-	retval = count;
-
-	memset(ad->output, 0x00, sizeof(ad->output));
-	ad->output_length = ad->length;
-
-	printk("data read from register 0x%02x:\n", (unsigned char)input);
-	for (ii = 0; ii < ad->length; ii++) {
-		printk("0x%02x\n", ad->buffer[ii]);
-		sprintf(&ad->output[ii * 2], "%02x", ad->buffer[ii]);
-	}
-
-exit:
-	if (ad->enabled) {
-		msleep(ad->delay_time);
-		dsi_video_mode_enable(dssdev, MIPI_DSI_PACKED_PIXEL_STREAM_24);
-	}
-
-	dsi_bus_unlock(dssdev);
-	mutex_unlock(&ad->lock);
-
-	ad->length = 0;
-	ad->index = 0;
-
-	return retval;
-}
-
-static ssize_t td4291_store_config(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	char input[8] = {0};
-	unsigned char num_of_regs;
-	struct omap_dss_device *dssdev = to_dss_device(dev);
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	if (count > 8)
-		return -EINVAL;
-
-	memcpy(input, buf, count - 1);
-
-	mutex_lock(&ad->lock);
-	dsi_bus_lock(dssdev);
-
-	if (ad->enabled)
-		dsi_video_mode_disable(dssdev);
-
-	if (strcmp(input, "auo") == 0) {
-		num_of_regs = ARRAY_SIZE(auo_reg_settings);
-		td4291_config(dssdev, auo_reg_settings, num_of_regs);
-	} else if (strcmp(input, "auo_new") == 0) {
-		num_of_regs = ARRAY_SIZE(auo_new_reg_settings);
-		td4291_config(dssdev, auo_new_reg_settings, num_of_regs);
-	} else if (strcmp(input, "yxt") == 0) {
-		num_of_regs = ARRAY_SIZE(yxt_reg_settings);
-		td4291_config(dssdev, yxt_reg_settings, num_of_regs);
-	} else if (strcmp(input, "yxt_new") == 0) {
-		num_of_regs = ARRAY_SIZE(yxt_new_reg_settings);
-		td4291_config(dssdev, yxt_new_reg_settings, num_of_regs);
-	}
-
-	if (ad->enabled)
-		dsi_video_mode_enable(dssdev, MIPI_DSI_PACKED_PIXEL_STREAM_24);
-
-	dsi_bus_unlock(dssdev);
-	mutex_unlock(&ad->lock);
-
-	return count;
-}
-
 static ssize_t td4291_store_touch(struct device *dev,
 		struct device_attribute *attr,
 		const char *buf, size_t count)
@@ -824,38 +493,6 @@ static ssize_t td4291_store_display_on_ms(struct device *dev,
 	return count;
 }
 
-static ssize_t td4291_show_use_generic(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct omap_dss_device *dssdev = to_dss_device(dev);
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	return snprintf(buf, PAGE_SIZE, "%u\n", ad->use_generic_access);
-}
-
-static ssize_t td4291_store_use_generic(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t count)
-{
-	int retval;
-	unsigned long input;
-	struct omap_dss_device *dssdev = to_dss_device(dev);
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	retval = strict_strtoul(buf, 10, &input);
-	if (retval)
-		return retval;
-
-	if (input == 1)
-		ad->use_generic_access = true;
-	else if (input == 0)
-		ad->use_generic_access = false;
-	else
-		return -EINVAL;
-
-	return count;
-}
-
 static ssize_t td4291_show_version(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -874,12 +511,6 @@ static DEVICE_ATTR(write, S_IWUGO,
 		NULL, td4291_store_write);
 static DEVICE_ATTR(read, S_IRUGO | S_IWUGO,
 		td4291_show_read, td4291_store_read);
-static DEVICE_ATTR(write_reg, S_IWUGO,
-		NULL, td4291_store_write_reg);
-static DEVICE_ATTR(read_reg, S_IRUGO | S_IWUGO,
-		td4291_show_read_reg, td4291_store_read_reg);
-static DEVICE_ATTR(config, S_IWUGO,
-		NULL, td4291_store_config);
 static DEVICE_ATTR(touch, S_IWUGO,
 		NULL, td4291_store_touch);
 static DEVICE_ATTR(uwait, S_IWUGO,
@@ -890,8 +521,6 @@ static DEVICE_ATTR(sleep_out_ms, S_IRUGO | S_IWUGO,
 		td4291_show_sleep_out_ms, td4291_store_sleep_out_ms);
 static DEVICE_ATTR(display_on_ms, S_IRUGO | S_IWUGO,
 		td4291_show_display_on_ms, td4291_store_display_on_ms);
-static DEVICE_ATTR(use_generic, S_IRUGO | S_IWUGO,
-		td4291_show_use_generic, td4291_store_use_generic);
 static DEVICE_ATTR(version, S_IRUGO,
 		td4291_show_version, NULL);
 
@@ -902,15 +531,11 @@ static struct attribute *td4291_attrs[] = {
 	&dev_attr_buffer.attr,
 	&dev_attr_write.attr,
 	&dev_attr_read.attr,
-	&dev_attr_write_reg.attr,
-	&dev_attr_read_reg.attr,
-	&dev_attr_config.attr,
 	&dev_attr_touch.attr,
 	&dev_attr_uwait.attr,
 	&dev_attr_delay_time_ms.attr,
 	&dev_attr_sleep_out_ms.attr,
 	&dev_attr_display_on_ms.attr,
-	&dev_attr_use_generic.attr,
 	&dev_attr_version.attr,
 	NULL,
 };
@@ -1139,80 +764,6 @@ static int td4291_check_timings(struct omap_dss_device *dssdev,
 	return 0;
 }
 
-static void td4291_set_reg(struct omap_dss_device *dssdev, unsigned char addr,
-		unsigned char value)
-{
-	int retval;
-	unsigned char cmd[2];
-//	unsigned char readback;
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-/*
-	retval = dsi_vc_dcs_read(dssdev, ad->config_channel, addr, &readback,
-			1);
-	if (retval < 0)
-		dev_err(&dssdev->dev, "Failed to read register 0x%02x\n",
-				addr);
-	dev_info(&dssdev->dev, "Register 0x%02x before = 0x%02x\n",
-			addr, readback);
-*/
-	cmd[0] = addr;
-	cmd[1] = value;
-
-	if (ad->use_generic_access)
-		retval = dsi_vc_dcs_generic_write_nosync(dssdev,
-				ad->config_channel, cmd, 2);
-	else
-		retval = dsi_vc_dcs_write_nosync(dssdev,
-				ad->config_channel, cmd, 2);
-
-	if (retval < 0)
-		dev_err(&dssdev->dev, "Failed to write register 0x%02x\n",
-				addr);
-/*
-	retval = dsi_vc_dcs_read(dssdev, ad->config_channel, addr, &readback,
-			1);
-	if (retval < 0)
-		dev_err(&dssdev->dev, "Failed to read register 0x%02x\n",
-				addr);
-	dev_info(&dssdev->dev, "Register 0x%02x after = 0x%02x\n",
-			addr, readback);
-*/
-	msleep(ad->delay_time);
-
-	return;
-}
-
-static void td4291_config(struct omap_dss_device *dssdev,
-		struct td_4291_register_setting *reg_settings,
-		unsigned char num_of_regs)
-{
-	int retval = 0;
-	unsigned char ii;
-	unsigned char cmd;
-	struct td4291_data *ad = dev_get_drvdata(&dssdev->dev);
-
-	cmd = 0xde;
-	retval = dsi_vc_dcs_write_nosync(dssdev, ad->config_channel, &cmd, 1);
-	if (retval < 0)
-		dev_err(&dssdev->dev, "Failed to enter register access mode\n");
-
-	msleep(ad->delay_time);
-
-	for (ii = 0; ii < num_of_regs; ii++) {
-		td4291_set_reg(dssdev, reg_settings[ii].address,
-				reg_settings[ii].value);
-	}
-
-	msleep(ad->delay_time);
-
-	cmd = 0xdf;
-	retval = dsi_vc_dcs_write_nosync(dssdev, ad->config_channel, &cmd, 1);
-	if (retval < 0)
-		dev_err(&dssdev->dev, "Failed to exit register access mode\n");
-
-	return;
-}
-
 static int td4291_power_on(struct omap_dss_device *dssdev)
 {
 	int retval = 0;
@@ -1246,8 +797,6 @@ static int td4291_power_on(struct omap_dss_device *dssdev)
 		td4291_dcs_write_sequence(dssdev, display_on,
 				ARRAY_SIZE(display_on));
 		msleep(td4291_panel_config.sleep.display_on);
-
-//		td4291_config(dssdev);
 
 		retval = dsi_vc_set_max_rx_packet_size(dssdev,
 				ad->config_channel, 0xff);
@@ -1407,7 +956,6 @@ static int td4291_probe(struct omap_dss_device *dssdev)
 	ad->dssdev = dssdev;
 	ad->pdata = dssdev->data;
 	ad->delay_time = DELAY_TIME_MS;
-	ad->use_generic_access = USE_GENERIC_ACCESS;
 
 	if (!ad->pdata) {
 		dev_err(&dssdev->dev, "Invalid platform data\n");
