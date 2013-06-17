@@ -1,0 +1,130 @@
+//
+//  Synaptics TD4291 Driver
+/////////////////////////////////////////////////////////////
+
+v1.13 Jun 10, 2013 scott.lin@tw.synaptics.com
+   - Set delay after Sleep Out to 600ms by default
+   - Set delay after Display On to 200ms by default
+   - Allow delay after Sleep Out to be modified through sysfs interface
+   - Allow delay after Display On to be modified through sysfs interface
+
+v1.12 May 31, 2013 scott.lin@tw.synaptics.com
+   - Run Sleep Out and Display On by default during initialization
+   - Remove Sleep Out and Display On from init sequences for AUO and YXT
+   - Init sequences for AUO and YXT now contain only register settings
+
+v1.11 May 30, 2013 scott.lin@tw.synaptics.com
+   - Correct data type used when setting register value using generic write
+   - Enable generic read/write for register access by default
+
+v1.10 May 28, 2013 scott.lin@tw.synaptics.com
+   - Add return data types for generic read
+
+v1.9 May 27, 2013 scott.lin@tw.synaptics.com
+   - Set delay time between commands to 20ms by default
+   - Correct PCLK setting for 12, 4, 4 vertical blanking configuration
+   - Add support to access registers using generic read/write (default = disabled)
+   - Allow generic read/write to be enabled/disabled through sysfs interface
+   - Add support to run original and new initialization sequences for both AUO and YXT
+   - Horizontal front porch = 96 PCLKs
+   - Horizontal sync width = 38 PCLKs
+   - Horizontal back porch = 74 PCLKs
+   - Vertical front porch = 12 lines
+   - Vertical sync width = 4 lines
+   - Vertical back porch = 4 lines
+
+v1.8 May 23, 2013 scott.lin@tw.synaptics.com
+   - Set delay time between commands to 100ms by default
+   - Allow delay time between commands to be adjusted through sysfs interface
+   - Horizontal front porch = 96 PCLKs
+   - Horizontal sync width = 38 PCLKs
+   - Horizontal back porch = 74 PCLKs
+   - Vertical front porch = 12 lines
+   - Vertical sync width = 4 lines
+   - Vertical back porch = 4 lines
+   - Initialization sequence for AUO
+       Issue DCS command 0x11 (Sleep Out)
+       Issue DCS command 0x29 (Display On)
+       Set register 0xb0 to 0x00 (DSI_CFG_7_0)
+       Set register 0xb3 to 0x00 (DSI_CFG_31_24)
+       Set register 0x2d to 0x32 (VID_IN_LPB_LSB)
+       Set register 0x40 to 0xd7 (OSC_PER_LINE_LSB)
+       Set register 0xac to 0x32 (DISP_OUT_LPB_LSB)
+       Set register 0xe0 to 0x0d (TCH_LPB_LSB)
+       Set register 0x55 to 0x00 (BLANK_REG)
+   - Initialization sequence for YXT
+       Issue DCS command 0x11 (Sleep Out)
+       Issue DCS command 0x29 (Display On)
+       Set register 0xb0 to 0x00 (DSI_CFG_7_0)
+       Set register 0xb3 to 0x00 (DSI_CFG_31_24)
+       Set register 0x2d to 0x32 (VID_IN_LPB_LSB)
+       Set register 0x40 to 0xcc (OSC_PER_LINE_LSB)
+       Set register 0xac to 0x32 (DISP_OUT_LPB_LSB)
+       Set register 0xe0 to 0x0d (TCH_LPB_LSB)
+       Set register 0x55 to 0x00 (BLANK_REG)
+
+v1.7 May 16, 2013 scott.lin@tw.synaptics.com
+   - Allow results from command/register reads to be retrieved via ADB by using cat
+   - Add usec wait to sysfs interface
+   - Update touch driver to v1.20
+
+v1.6 Apr 30, 2013 scott.lin@tw.synaptics.com
+   - Update touch driver to v1.19 to allow connection to DS4 through RED Remote
+
+v1.5 Apr 23, 2013 scott.lin@tw.synaptics.com
+   - Remove initialization sequence from power-on function
+   - Allow separate initialization sequences for AUO and YXT to run through sysfs interface
+   - Initialization sequence for AUO
+       Issue DCS command 0x11
+       Issue DCS command 0x29
+       Set register 0xb0 to 0x00
+       Set register 0xb3 to 0xf0
+       Set register 0x45 to 0x11
+       Set register 0x55 to 0x00
+   - Initialization sequence for YXT
+       Issue DCS command 0x11
+       Issue DCS command 0x29
+       Set register 0xb3 to 0x70
+       Set register 0x45 to 0x13
+
+v1.4 Apr 17, 2013 scott.lin@tw.synaptics.com
+   - Add device reset to sysfs interface
+   - Add start/stop of video transmission to sysfs interface
+   - Add initialization sequence to sysfs interface
+
+v1.3 Apr 16, 2013 scott.lin@tw.synaptics.com
+   - Add sysfs interface for issuing DCS commands and accessing registers during run time
+
+v1.2 Apr 15, 2013 scott.lin@tw.synaptics.com
+   - Vertical front porch = 4 lines
+   - Vertical sync width = 4 lines
+   - Vertical back porch = 4 lines
+   - Set up reg_settings data structure for centralizing register settings during initialization
+
+v1.1 Mar 28, 2013 scott.lin@tw.synaptics.com
+   - Change name from AUO4291 to TD4291
+   - Export reset and debug mode GPIO's
+   - Set up SW1 (GPIO 121) on DAB as Back button
+   - Add version sysfs entry in /sys/devices/omapdss/display0
+
+v1.0 Mar 24, 2013 scott.lin@tw.synaptics.com
+   - Four data lanes and one clock lane
+   - 60Hz frame rate
+   - 72MHz pixel clock
+   - 216MHz high-speed mode DDR clock and 10MHz low-power mode clock
+   - Burst mode
+   - Horizontal front porch = 96 PCLKs
+   - Horizontal sync width = 38 PCLKs
+   - Horizontal back porch = 74 PCLKs
+   - Vertical front porch = 4 lines
+   - Vertical sync width = 3 lines
+   - Vertical back porch = 5 lines
+   - DSI_CFG_7_0 (0xb0)
+       Default value = 0x7f
+       Updated value = 0x00
+   - DSI_CFG_31_24 (0xb3)
+       Default value = 0x60
+       Updated value = 0xf0
+   - TCH_SL_LSB (0x45)
+       Default value = 0x0c
+       Updated value = 0x11
