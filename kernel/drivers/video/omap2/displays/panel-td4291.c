@@ -36,15 +36,17 @@
 #include <video/mipi_display.h>
 #include <video/omap-panel-td4291.h>
 
-#define TD4291_VERSION "1.13"
+#define TD4291_VERSION "1.14"
 
 #define USE_GENERIC_ACCESS true
 
 #define BUFFER_LENGTH 10
 
 #define DELAY_TIME_MS 20
-#define SLEEP_OUT_DELAY_TIME_MS 600
-#define DISPLAY_ON_DELAY_TIME_MS 200
+#define SLEEP_OUT_DELAY_TIME_MS 300
+#define DISPLAY_ON_DELAY_TIME_MS 300
+#define SLEEP_IN_DELAY_TIME_MS 300
+#define DISPLAY_OFF_DELAY_TIME_MS 300
 
 struct td4291_data {
 	struct omap_dss_device *dssdev;
@@ -75,6 +77,7 @@ struct panel_config {
 		unsigned int sleep_in;
 		unsigned int sleep_out;
 		unsigned int display_on;
+		unsigned int display_off;
 		unsigned int hw_reset;
 	} sleep;
 	struct {
@@ -110,6 +113,8 @@ static struct panel_config td4291_panel_config = {
 	.sleep = {
 		.sleep_out = SLEEP_OUT_DELAY_TIME_MS,
 		.display_on = DISPLAY_ON_DELAY_TIME_MS,
+		.sleep_in = SLEEP_IN_DELAY_TIME_MS,
+		.display_off = DISPLAY_OFF_DELAY_TIME_MS,
 		.hw_reset = 500,
 	},
 	.reset_sequence = {
@@ -124,6 +129,14 @@ static struct td4291_reg sleep_out[] = {
 
 static struct td4291_reg display_on[] = {
 	{{ MIPI_DCS_SET_DISPLAY_ON, }, 1},
+};
+
+static struct td4291_reg sleep_in[] = {
+	{{ MIPI_DCS_ENTER_SLEEP_MODE, }, 1},
+};
+
+static struct td4291_reg display_off[] = {
+	{{ MIPI_DCS_SET_DISPLAY_OFF, }, 1},
 };
 
 static struct td_4291_register_setting auo_reg_settings[] = {
@@ -145,37 +158,6 @@ static struct td_4291_register_setting auo_reg_settings[] = {
 	},
 };
 
-static struct td_4291_register_setting auo_new_reg_settings[] = {
-	{
-		.address = 0xb0, /* DSI_CFG_7_0 */
-		.value = 0x00,
-	},
-	{
-		.address = 0xb3, /* DSI_CFG_31_24 */
-		.value = 0x00,
-	},
-	{
-		.address = 0x2d, /* VID_IN_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0x40, /* OSC_PER_LINE_LSB */
-		.value = 0xd7,
-	},
-	{
-		.address = 0xac, /* DISP_OUT_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0xe0, /* TCH_LPB_LSB */
-		.value = 0x0d,
-	},
-	{
-		.address = 0x55, /* BLANK_REG */
-		.value = 0x00,
-	},
-};
-
 static struct td_4291_register_setting yxt_reg_settings[] = {
 	{
 		.address = 0xb3, /* DSI_CFG_31_24 */
@@ -187,39 +169,8 @@ static struct td_4291_register_setting yxt_reg_settings[] = {
 	},
 };
 
-static struct td_4291_register_setting yxt_new_reg_settings[] = {
-	{
-		.address = 0xb0, /* DSI_CFG_7_0 */
-		.value = 0x00,
-	},
-	{
-		.address = 0xb3, /* DSI_CFG_31_24 */
-		.value = 0x00,
-	},
-	{
-		.address = 0x2d, /* VID_IN_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0x40, /* OSC_PER_LINE_LSB */
-		.value = 0xcc,
-	},
-	{
-		.address = 0xac, /* DISP_OUT_LPB_LSB */
-		.value = 0x32,
-	},
-	{
-		.address = 0xe0, /* TCH_LPB_LSB */
-		.value = 0x0d,
-	},
-	{
-		.address = 0x55, /* BLANK_REG */
-		.value = 0x00,
-	},
-};
-
-void synaptics_rmi4_touch_wake(void);
 void synaptics_rmi4_touch_sleep(void);
+void synaptics_rmi4_touch_wake(void);
 
 void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev);
 
@@ -694,15 +645,9 @@ static ssize_t td4291_store_config(struct device *dev,
 	if (strcmp(input, "auo") == 0) {
 		num_of_regs = ARRAY_SIZE(auo_reg_settings);
 		td4291_config(dssdev, auo_reg_settings, num_of_regs);
-	} else if (strcmp(input, "auo_new") == 0) {
-		num_of_regs = ARRAY_SIZE(auo_new_reg_settings);
-		td4291_config(dssdev, auo_new_reg_settings, num_of_regs);
 	} else if (strcmp(input, "yxt") == 0) {
 		num_of_regs = ARRAY_SIZE(yxt_reg_settings);
 		td4291_config(dssdev, yxt_reg_settings, num_of_regs);
-	} else if (strcmp(input, "yxt_new") == 0) {
-		num_of_regs = ARRAY_SIZE(yxt_new_reg_settings);
-		td4291_config(dssdev, yxt_new_reg_settings, num_of_regs);
 	}
 
 	if (ad->enabled)

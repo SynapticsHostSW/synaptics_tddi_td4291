@@ -2,6 +2,12 @@
 //  Synaptics TD4291 Driver
 /////////////////////////////////////////////////////////////
 
+v1.14 Nov 04, 2013 scott.lin@tw.synaptics.com
+   - Set delay after Sleep Out to 300ms by default
+   - Set delay after Display On to 300ms by default
+   - Update to v2.1 touch driver
+   - Add support for updating display configuration in firmware update module
+
 v1.13 Jun 10, 2013 scott.lin@tw.synaptics.com
    - Set delay after Sleep Out to 600ms by default
    - Set delay after Display On to 200ms by default
